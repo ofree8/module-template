@@ -1,0 +1,16 @@
+workspace:
+    base: ~/go
+    path: src/git.ultrachain.pro/backend/module-template
+ 
+pipeline:
+    build_linux_amd64:
+        image: golang:1.11
+        group: build
+        environment:
+            - CGO_ENABLED=0
+            - GOOS=linux
+            - GOARCH=amd64
+        commands:
+            - go get ./...
+            - go test
+            - go build -v -a -o release/linux/amd64/module
