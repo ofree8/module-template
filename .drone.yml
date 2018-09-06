@@ -1,8 +1,23 @@
 workspace:
     base: ~/go
     path: src/git.ultrachain.pro/backend/module-template
- 
+
+clone: # 克隆 (默认为git)
+  git:
+    image: plugins/git
+    tags: true # git clone --tags 克隆tag
+
 pipeline:
+    restore-cache:
+        image: drillster/drone-volume-cache
+        restore: true
+        mount:
+            - src/github.com
+            - src/golang.org
+            - src/gopkg.in
+        volumes:
+            - /mnt/data/drone/cache/go/xxx/netdisk:/cache
+
     build_linux_amd64:
         image: golang:1.11
         group: build
@@ -10,7 +25,50 @@ pipeline:
             - CGO_ENABLED=0
             - GOOS=linux
             - GOARCH=amd64
+            - http_proxy=http://127.0.0.1:3128 # gopkg.in 下面的包需要挂代理才能拉回本地
+            - https_proxy=http://127.0.0.1:3128 # gopkg.in 下面的包需要挂代理才能拉回本地
         commands:
-            - go get ./...
+            - go get -v
             - go test
             - go build -v -a -o release/linux/amd64/module
+    rebuild-cache:
+        image: drillster/drone-volume-cache
+        rebuild: true
+        mount:
+            - src/github.com
+            - src/golang.org
+            - src/gopkg.in
+        volumes:
+            - /mnt/data/drone/cache/go/xxx/netdisk:/cache
+        when:
+            branch: master
+            status:  [ failure, success ] # 增加 failure 状态是因为，在 golang 工程 80%+ 大概率不能一次成功拉回所有依赖。就算失败也要缓存掉已拉回的依赖免除失败后从头再来的痛苦。
+    docker: #第一阶段，自上而下执行
+        image: plugins/docker #采用插件
+        repo: docker.finogeeks.club/business/xxx-knowledge # 容器image-name 需完整拼写
+        registry: docker.finogeeks.club
+        secrets: [ docker_username, docker_password ] #存储在repostiroy数据库中的密钥，由drone cli生成(drone secret add ...)
+        when:
+            branch: master
+            event: [push, pull_request]
+    docker: #第二阶段
+        registry: docker.finogeeks.club
+        repo: docker.finogeeks.club/business/xxx-knowledge
+        image: plugins/docker
+        default_tags: true
+        when: 
+            event: tag  # step的条件化执行，仅当 tag 事件时执行这个阶段   
+    slack:
+        image: plugins/slack
+        channel: dev
+        when:
+            branch: master
+
+    publish:
+        when:
+            event: tag
+            branch: master
+
+branches: 
+    include: [ master, develop ]
+    exclude: [ feature/* ]
