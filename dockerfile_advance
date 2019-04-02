@@ -1,0 +1,31 @@
+# Build app in g Go builder container
+FROM golang:1.12-alpine AS build-env
+
+RUN apk add --no-cache make gcc musl-dev linux-headers
+
+ARG build_tags
+ARG build_flags
+
+RUN mkdir -p /go/src/github.com/ofree8/module-template
+ADD . /go/src/github.com/ofree8/module-template
+RUN cd /go/src/github.com/ofree8/module-template && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build BUILD_TAGS="${build_tags}" BUILD_FLAGS="${build_flags}" -o app
+
+# Copy the binary to the second image
+FROM alpine:latest
+
+LABEL maintainer="blusky719@gmail.com"
+LABEL source="https://github.com/ofree8/module-template"
+LABEL description="module-template is a template project for golang project startup"
+
+RUN apk add --no-cache ca-certificates bash
+RUN mkdir -p /static/keys
+
+COPY --from=build-env /go/src/github.com/ofree8/module-template/build/bin/app /usr/local/bin/
+COPY --from=build-env /go/src/github.com/ofree8/module-template/static/keys/* /static/keys/
+
+COPY ./config.yaml /usr/local/
+
+EXPOSE 8080 30000/udp
+
+ENTRYPOINT [ "/usr/local/bin/app" ]
+#CMD "/usr/local/bin/app" "-c /usr/local/config.yaml"
